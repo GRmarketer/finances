@@ -710,7 +710,67 @@ function addLanc(){
   resetLancModal();
   if(curM===m)rLanc();rDash();fbSave();
 }
-function rParc(){const seen=new Set(),all=[];MO.forEach(m=>getGas(curY,m).filter(g=>g.t==='parcela'&&g.p).forEach(g=>{if(!seen.has(g.n)){seen.add(g.n);all.push(g);}}));document.getElementById('parc-list').innerHTML=all.length?all.map(g=>'<div class="parcela-item"><div style="width:36px;height:36px;border-radius:8px;background:rgba(76,201,240,.12);display:flex;align-items:center;justify-content:center;font-size:18px">\ud83d\udcb3</div><div style="flex:1"><div style="font-size:13px;font-weight:500">'+g.n+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">At\u00e9 '+g.p+'</div></div><div style="font-size:14px;font-weight:600;color:var(--blue);font-family:\'Syne\',sans-serif">'+fmt(g.v)+'/m\u00eas</div></div>').join(''):'<div style="color:var(--text3);font-size:13px">Nenhuma parcela ativa</div>';const mx=Math.max(...MO.map(m=>getGas(curY,m).filter(g=>g.t==='parcela').reduce((s,g)=>s+g.v,0)),1);document.getElementById('parc-time').innerHTML=MO.map(m=>{const t=getGas(curY,m).filter(g=>g.t==='parcela').reduce((s,g)=>s+g.v,0);return'<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="width:50px;font-size:12px;color:var(--text3)">'+MN[m].substring(0,3)+'</div><div style="flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;width:'+t/mx*100+'%;background:var(--blue);border-radius:4px"></div></div><div style="width:80px;text-align:right;font-size:12px;font-weight:600;color:var(--blue)">'+fmt(t)+'</div></div>';}).join('');}
+function rParc(){
+  var seen=new Map();
+  var anos=['2025','2026','2027','2028'];
+  anos.forEach(function(y){MO.forEach(function(m){
+    getGas(y,m).filter(function(g){return g.t==='parcela'&&g.p;}).forEach(function(g){
+      if(!seen.has(g.n)){seen.set(g.n,Object.assign({},g,{_y:y,_m:m}));}
+    });
+  });});
+  var all=[...seen.values()];
+  var mIdx=MO.indexOf(curM);
+  var hojeNum=parseInt(curY)*12+mIdx;
+  var ativas=all.filter(function(g){var p=g.p.split('-');return parseInt(p[0])*12+(parseInt(p[1])-1)>=hojeNum;});
+  var encerradas=all.filter(function(g){var p=g.p.split('-');return parseInt(p[0])*12+(parseInt(p[1])-1)<hojeNum;});
+  var html='';
+  if(ativas.length){
+    html+=ativas.map(function(g){
+      var p=g.p.split('-');var eY=p[0];var eM=p[1];
+      var fimNum=parseInt(eY)*12+(parseInt(eM)-1);
+      var restantes=fimNum-hojeNum+1;
+      var totalRest=g.v*restantes;
+      return '<div class="parcela-item">'
+        +'<div style="width:36px;height:36px;border-radius:8px;background:rgba(76,201,240,.12);display:flex;align-items:center;justify-content:center;font-size:18px">&#128179;</div>'
+        +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+g.n+'</div>'
+        +'<div style="font-size:11px;color:var(--text3);margin-top:2px">at\u00e9 '+eM+'/'+eY+' \u00b7 '+restantes+' parcela(s) restante(s)</div>'
+        +'<div style="font-size:11px;color:var(--text3)">Total restante: <strong style="color:var(--blue)">'+fmt(totalRest)+'</strong></div></div>'
+        +'<div style="font-size:14px;font-weight:600;color:var(--blue);font-family:\'Syne\',sans-serif">'+fmt(g.v)+'/m\u00eas</div>'
+        +'</div>';
+    }).join('');
+  } else {
+    html='<div style="color:var(--text3);font-size:13px;padding:8px 0">Nenhuma parcela ativa neste m\u00eas.</div>';
+  }
+  if(encerradas.length){
+    html+='<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">'
+      +'<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Encerradas</div>'
+      +encerradas.map(function(g){
+        return '<div class="parcela-item" style="opacity:.5">'
+          +'<div style="width:36px;height:36px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:18px">&#9989;</div>'
+          +'<div style="flex:1"><div style="font-size:13px;font-weight:500">'+g.n+'</div>'
+          +'<div style="font-size:11px;color:var(--text3);margin-top:2px">encerrou em '+g.p.split('-').reverse().join('/')+'</div></div>'
+          +'<div style="font-size:14px;font-weight:600;color:var(--text3);font-family:\'Syne\',sans-serif">'+fmt(g.v)+'/m\u00eas</div>'
+          +'</div>';
+      }).join('')
+      +'</div>';
+  }
+  document.getElementById('parc-list').innerHTML=html;
+  var mx=Math.max.apply(null,MO.map(function(m){
+    var mN=parseInt(curY)*12+MO.indexOf(m);
+    return all.filter(function(g){var p=g.p.split('-');return parseInt(p[0])*12+(parseInt(p[1])-1)>=mN;}).reduce(function(s,g){return s+g.v;},0);
+  }).concat([1]));
+  document.getElementById('parc-time').innerHTML=MO.map(function(m){
+    var mN=parseInt(curY)*12+MO.indexOf(m);
+    var t=all.filter(function(g){var p=g.p.split('-');return parseInt(p[0])*12+(parseInt(p[1])-1)>=mN;}).reduce(function(s,g){return s+g.v;},0);
+    var act=m===curM;
+    return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+      +'<div style="width:50px;font-size:12px;color:'+(act?'var(--accent)':'var(--text3)')+';font-weight:'+(act?700:400)+'">'+MN[m].substring(0,3)+'</div>'
+      +'<div style="flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden">'
+      +'<div style="height:100%;width:'+t/mx*100+'%;background:'+(act?'var(--blue)':'rgba(76,201,240,.4)')+';border-radius:4px"></div></div>'
+      +'<div style="width:80px;text-align:right;font-size:12px;font-weight:600;color:'+(act?'var(--blue)':'var(--text3)')+'">'+fmt(t)+'</div>'
+      +'</div>';
+  }).join('');
+}
 function rInv(){
   const CART_COLORS={'Renda Fixa / CDB':'var(--green)','A\u00e7\u00f5es BR (B3)':'var(--blue)','FIIs':'var(--yellow)','Fundo Viagem':'var(--purple)','Reserva Emerg\u00eancia':'var(--red)','Outro':'var(--text2)'};
   // aggregate all investment lançamentos by destino across all months of curY
