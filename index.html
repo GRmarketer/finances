@@ -99,13 +99,12 @@ tr:hover td{background:rgba(255,255,255,.02);}
 </style>
 
 <script>
-// Placeholder global — será substituído pelo módulo Firebase após carregamento
-window.fbSave = function(){ /* aguardando módulo Firebase */ };
+window.fbSave = function(){};
 window._fbStatus = function(){};
 </script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCIDTfU2URrh2FzVXnxqKda9FCUE1vCnmc",
@@ -121,7 +120,6 @@ const db = getFirestore(fbApp);
 const DOC_ID = "usuario-principal";
 const REF = doc(db, "financas", DOC_ID);
 
-// ── Expose save/load to global scope ─────────────────────────
 let _saveTimer = null;
 
 window.fbSave = function() {
@@ -135,6 +133,7 @@ window.fbSave = function() {
         tplGas: JSON.stringify(TPL.gas),
         cats: JSON.stringify(CATS),
         dests: JSON.stringify(DESTS),
+        contas: JSON.stringify(CONTAS),
         orcamentos: JSON.stringify(ORCAMENTOS),
         updatedAt: Date.now()
       });
@@ -165,30 +164,25 @@ window._fbStatus = function(status) {
   }
 };
 
-// ── Load on startup ───────────────────────────────────────────
 window.addEventListener('load', async () => {
   window._fbStatus('carregando');
   try {
     const snap = await getDoc(REF);
     if (snap.exists()) {
       const data = snap.data();
-      // Restore D
-      const savedRec = JSON.parse(data.rec || '{}');
-      const savedGas = JSON.parse(data.gas || '{}');
-      Object.assign(D.rec, savedRec);
-      Object.assign(D.gas, savedGas);
-      // Restore TPL
+      Object.assign(D.rec, JSON.parse(data.rec || '{}'));
+      Object.assign(D.gas, JSON.parse(data.gas || '{}'));
       if (data.tplRec) TPL.rec.splice(0, TPL.rec.length, ...JSON.parse(data.tplRec));
       if (data.tplGas) TPL.gas.splice(0, TPL.gas.length, ...JSON.parse(data.tplGas));
-      // Restore CATS and DESTS
       if (data.cats) { const c = JSON.parse(data.cats); CATS.splice(0, CATS.length, ...c); }
       if (data.dests) { const d = JSON.parse(data.dests); DESTS.splice(0, DESTS.length, ...d); }
-      if (data.orcamentos) { Object.assign(ORCAMENTOS, JSON.parse(data.orcamentos)); }
+      if (data.contas) { const c = JSON.parse(data.contas); CONTAS.splice(0, CONTAS.length, ...c); }
+      if (data.orcamentos) Object.assign(ORCAMENTOS, JSON.parse(data.orcamentos));
     }
     window._fbStatus('salvo');
-    // Re-render current page with loaded data
     rebuildSelects();
     rebuildDestSelects();
+    rebuildContaSelects();
     rDash();
   } catch(e) {
     console.error('Erro ao carregar:', e);
@@ -213,8 +207,7 @@ window.addEventListener('load', async () => {
   </nav>
   <div class="month-sel">
     <label>M&#234;s / Ano</label>
-    <div style="display:flex;gap:6px">
-      <select id="gMes" onchange="changePeriod()" style="flex:1.6">
+    <div style="display:flex;gap:6px">      <select id="gMes" onchange="changePeriod()" style="flex:1.6">
         <option value="Jan">Janeiro</option><option value="Fev">Fevereiro</option><option value="Mar" selected>Mar&#231;o</option>
         <option value="Abr">Abril</option><option value="Mai">Maio</option><option value="Jun">Junho</option>
         <option value="Jul">Julho</option><option value="Ago">Agosto</option><option value="Set">Setembro</option>
@@ -310,7 +303,7 @@ window.addEventListener('load', async () => {
     </div>
     <div class="panel">
       <table>
-        <thead><tr><th>Nome</th><th>Categoria</th><th>Tipo</th><th class="text-right">Valor</th><th>Parcela at&#233;</th><th></th></tr></thead>
+        <thead><tr><th>Nome</th><th>Categoria</th><th>Conta</th><th>Tipo</th><th class="text-right">Valor</th><th>Parcela at&#233;</th><th></th></tr></thead>
         <tbody id="lanc-tb"></tbody>
       </table>
     </div>
@@ -387,7 +380,7 @@ window.addEventListener('load', async () => {
 
   <!-- CONFIGURAÇÕES -->
   <div id="page-config" class="page">
-    <div class="page-header"><h2>Configura&#231;&#245;es</h2><p>Personalize categorias e destinos de investimento</p></div>
+    <div class="page-header"><h2>Configura&#231;&#245;es</h2><p>Personalize categorias, contas e destinos de investimento</p></div>
     <div class="grid-2">
       <div class="panel">
         <div class="panel-title">Categorias de Gasto
@@ -400,6 +393,18 @@ window.addEventListener('load', async () => {
         <div id="cat-list"></div>
       </div>
       <div class="panel">
+        <div class="panel-title">Contas / Cart&#245;es
+          <div style="display:flex;gap:6px">
+            <input type="text" id="new-conta-input" placeholder="Ex: Nubank, XP..." style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;width:140px">
+            <button class="btn btn-sm btn-primary" onclick="addConta()">+ Adicionar</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Aparecem no campo de conta ao lan&#231;ar um gasto</div>
+        <div id="conta-list"></div>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:0">
+      <div class="panel">
         <div class="panel-title">Destinos de Investimento
           <div style="display:flex;gap:6px">
             <input type="text" id="new-dest-input" placeholder="Novo destino..." style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:5px 10px;border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;outline:none;width:140px">
@@ -409,15 +414,15 @@ window.addEventListener('load', async () => {
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Aparecem ao selecionar tipo Investimento</div>
         <div id="dest-list"></div>
       </div>
-    </div>
-    <div class="panel" style="margin-top:0">
-      <div class="panel-title">Tipos de Lan&#231;amento</div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.8">
-        Os tipos s&#227;o fixos pois definem a l&#243;gica financeira do app:<br>
-        <span style="color:var(--green);font-weight:600">Gasto Essencial</span> &#8594; contabilizado nos 50% da regra &#183;
-        <span style="color:var(--yellow);font-weight:600">N&#227;o Essencial</span> &#8594; nos 30% &#183;
-        <span style="color:var(--purple);font-weight:600">Investimento</span> &#8594; nos 20% &#183;
-        <span style="color:var(--blue);font-weight:600">Parcela</span> e <span style="color:var(--red);font-weight:600">Assinatura</span> &#8594; contam como N&#227;o Essenciais
+      <div class="panel">
+        <div class="panel-title">Tipos de Lan&#231;amento</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.8">
+          Os tipos s&#227;o fixos pois definem a l&#243;gica financeira do app:<br>
+          <span style="color:var(--green);font-weight:600">Gasto Essencial</span> &#8594; contabilizado nos 50% da regra &#183;
+          <span style="color:var(--yellow);font-weight:600">N&#227;o Essencial</span> &#8594; nos 30% &#183;
+          <span style="color:var(--purple);font-weight:600">Investimento</span> &#8594; nos 20% &#183;
+          <span style="color:var(--blue);font-weight:600">Parcela</span> e <span style="color:var(--red);font-weight:600">Assinatura</span> &#8594; contam como N&#227;o Essenciais
+        </div>
       </div>
     </div>
   </div>
@@ -456,6 +461,7 @@ window.addEventListener('load', async () => {
       <div class="form-group"><label>Tipo</label><select id="l-tipo" onchange="toggleDestinoField('l-tipo','l-destino-group')"><option value="essencial">Gasto Essencial</option><option value="nao-essencial">Gasto N&#227;o Essencial</option><option value="investimento">Investimento</option><option value="parcela">Parcela</option><option value="assinatura">Assinatura</option></select></div>
       <div class="form-group"><label>M&#234;s</label><select id="l-mes"><option value="Jan">Janeiro</option><option value="Fev">Fevereiro</option><option value="Mar">Mar&#231;o</option><option value="Abr">Abril</option><option value="Mai">Maio</option><option value="Jun">Junho</option><option value="Jul">Julho</option><option value="Ago">Agosto</option><option value="Set">Setembro</option><option value="Out">Outubro</option><option value="Nov">Novembro</option><option value="Dez">Dezembro</option></select></div>
       <div class="form-group"><label>Categoria</label><select id="l-cat"></select></div>
+      <div class="form-group"><label>Conta / Cart&#227;o</label><select id="l-conta"></select></div>
       <div class="form-group"><label>Parcela at&#233; (opcional)</label><input type="month" id="l-parcela"></div>
       <div class="form-group full" id="l-destino-group" style="display:none"><label>Destino na Carteira</label>
         <select id="l-destino"></select>
@@ -473,6 +479,7 @@ window.addEventListener('load', async () => {
       <div class="form-group"><label>Valor Padr&#227;o (R$)</label><input type="number" id="lt-valor" placeholder="0,00" step="0.01"></div>
       <div class="form-group"><label>Tipo</label><select id="lt-tipo" onchange="toggleDestinoField('lt-tipo','lt-destino-group')"><option value="essencial">Gasto Essencial</option><option value="nao-essencial">Gasto N&#227;o Essencial</option><option value="investimento">Investimento</option><option value="parcela">Parcela</option><option value="assinatura">Assinatura</option></select></div>
       <div class="form-group"><label>Categoria</label><select id="lt-cat"></select></div>
+      <div class="form-group"><label>Conta / Cart&#227;o</label><select id="lt-conta"></select></div>
       <div class="form-group full" id="lt-destino-group" style="display:none"><label>Destino na Carteira</label>
         <select id="lt-destino"></select>
       </div>
@@ -504,6 +511,7 @@ const CATS=['Moradia','Alimentação','Transporte','Saúde','Lazer','Vestuário'
 const DESTS=['Renda Fixa / CDB','Ações BR (B3)','FIIs','Fundo Viagem','Reserva Emergência','Outro'];
 // Orçamentos por categoria: { 'Moradia': 1000, 'Alimentação': 1500, ... }
 let ORCAMENTOS = {};
+const CONTAS=['Nubank','Itaú','Bradesco','C6 Bank','Inter','Dinheiro','Outro'];
 const fmt=v=>'R$ '+(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const pN=(a,b)=>b?Math.min(a/b*100,200):0;
 const pS=(a,b)=>pN(a,b).toFixed(0)+'%';
@@ -526,6 +534,10 @@ function renderDests(){
   const el=document.getElementById('dest-list');if(!el)return;
   el.innerHTML=DESTS.map((d,i)=>'<div class="expense-item"><div class="expense-name">'+d+'</div><button class="btn btn-danger btn-sm" onclick="delDest('+i+')">\u00d7</button></div>').join('');
 }
+function renderContas(){
+  const el=document.getElementById('conta-list');if(!el)return;
+  el.innerHTML=CONTAS.map((c,i)=>'<div class="expense-item"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">🏦</span><div class="expense-name">'+c+'</div></div><button class="btn btn-danger btn-sm" onclick="delConta('+i+')">\u00d7</button></div>').join('');
+}
 function addCat(){
   const v=document.getElementById('new-cat-input').value.trim();
   if(!v)return;if(CATS.includes(v)){toast('Categoria j\u00e1 existe');return;}
@@ -544,16 +556,29 @@ function addDest(){
 function delDest(i){
   DESTS.splice(i,1);rebuildDestSelects();renderDests();toast('Destino removido');fbSave();
 }
+function addConta(){
+  const v=document.getElementById('new-conta-input').value.trim();
+  if(!v)return;if(CONTAS.includes(v)){toast('Conta já existe');return;}
+  CONTAS.push(v);document.getElementById('new-conta-input').value='';
+  rebuildContaSelects();renderContas();toast('Conta adicionada ✅');fbSave();
+}
+function delConta(i){
+  CONTAS.splice(i,1);rebuildContaSelects();renderContas();toast('Conta removida');fbSave();
+}
 function rebuildSelects(){
   const opts=CATS.map(c=>'<option>'+c+'</option>').join('');
   ['l-cat','lt-cat'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
   rebuildOrcSelect();
 }
+function rebuildContaSelects(){
+  const opts=CONTAS.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+  ['l-conta','lt-conta'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
+}
 function rebuildDestSelects(){
   const opts=DESTS.map(d=>'<option value="'+d+'">'+d+'</option>').join('');
   ['l-destino','lt-destino'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=opts;});
 }
-function rConfig(){renderCats();renderDests();}
+function rConfig(){renderCats();renderDests();renderContas();}
 function showPage(p){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));document.getElementById('page-'+p).classList.add('active');document.querySelectorAll('.nav-item').forEach(x=>{if(x.textContent.trim().toLowerCase().startsWith(p.substring(0,4).toLowerCase()))x.classList.add('active');});({dashboard:rDash,recebimentos:rRec,lancamentos:rLanc,parcelas:rParc,investimentos:rInv,orcamento:rOrc,metas:rMeta,historico:rHist,config:rConfig}[p]||function(){})();}
 function rebuildOrcSelect(){const el=document.getElementById('orc-cat');if(!el)return;el.innerHTML=CATS.map(c=>'<option value="'+c+'">'+c+(ORCAMENTOS[c]?' ('+fmt(ORCAMENTOS[c])+')':'')+'</option>').join('');}
 function saveOrc(){const cat=document.getElementById('orc-cat').value;const val=parseFloat(document.getElementById('orc-val').value);if(!cat||!val||val<=0){alert('Preencha categoria e valor!');return;}ORCAMENTOS[cat]=val;closeModal('orc');document.getElementById('orc-val').value='';toast('Orçamento de '+cat+' definido: '+fmt(val)+' ✅');rOrc();rebuildOrcSelect();fbSave();}
@@ -624,13 +649,13 @@ function saveRecTpl(){const n=document.getElementById('rt-nome').value.trim();co
 function applyRecTpl(id){const t=TPL.rec.find(x=>x.id===id);if(!t)return;getRec(curY,curM).push({n:t.n,v:t.v,r:t.r});toast('"'+t.n+'" adicionado em '+MN[curM]+' '+curY+' \u2705');rRec();rDash();fbSave();}
 function delRecTpl(id){const i=TPL.rec.findIndex(x=>x.id===id);if(i>-1)TPL.rec.splice(i,1);renderRecTpls();toast('Template removido');fbSave();}
 function renderLancTpls(){const el=document.getElementById('lanc-tpl-list');if(!el)return;if(!TPL.gas.length){el.innerHTML='<div class="tpl-empty">Nenhum template ainda. Clique em "+ Criar" para come\u00e7ar.</div>';return;}el.innerHTML='<div class="tpl-grid">'+TPL.gas.map(t=>'<div class="tpl-card"><div class="tpl-info"><div class="tpl-name">'+t.n+'</div><div class="tpl-val">'+fmt(t.v)+' \u00b7 '+t.c+'</div></div><button class="tpl-apply" onclick="applyLancTpl('+t.id+')">\u26a1 Aplicar</button><button class="tpl-del" onclick="delLancTpl('+t.id+')">\u00d7</button></div>').join('')+'</div>';}
-function saveLancTpl(){const n=document.getElementById('lt-nome').value.trim();const v=parseFloat(document.getElementById('lt-valor').value);const t=document.getElementById('lt-tipo').value;const c=document.getElementById('lt-cat').value;const d=t==='investimento'?document.getElementById('lt-destino').value:'';if(!n||!v){alert('Preencha nome e valor!');return;}TPL.gas.push(Object.assign({id:++tplLid,n,v,t,c},d?{d}:{}));closeModal('new-lanc-tpl');['lt-nome','lt-valor'].forEach(id=>document.getElementById(id).value='');document.getElementById('lt-destino-group').style.display='none';toast('Template de gasto criado! \u2705');renderLancTpls();fbSave();}
-function applyLancTpl(id){const t=TPL.gas.find(x=>x.id===id);if(!t)return;getGas(curY,curM).push({n:t.n,v:t.v,t:t.t,c:t.c});toast('"'+t.n+'" adicionado em '+MN[curM]+' '+curY+' \u2705');rLanc();rDash();}
+function saveLancTpl(){const n=document.getElementById('lt-nome').value.trim();const v=parseFloat(document.getElementById('lt-valor').value);const t=document.getElementById('lt-tipo').value;const c=document.getElementById('lt-cat').value;const ct=document.getElementById('lt-conta').value;const d=t==='investimento'?document.getElementById('lt-destino').value:'';if(!n||!v){alert('Preencha nome e valor!');return;}TPL.gas.push(Object.assign({id:++tplLid,n,v,t,c,ct},d?{d}:{}));closeModal('new-lanc-tpl');['lt-nome','lt-valor'].forEach(id=>document.getElementById(id).value='');document.getElementById('lt-destino-group').style.display='none';toast('Template de gasto criado! \u2705');renderLancTpls();fbSave();}
+function applyLancTpl(id){const t=TPL.gas.find(x=>x.id===id);if(!t)return;getGas(curY,curM).push({n:t.n,v:t.v,t:t.t,c:t.c,ct:t.ct||''});toast('"'+t.n+'" adicionado em '+MN[curM]+' '+curY+' \u2705');rLanc();rDash();}
 function delLancTpl(id){const i=TPL.gas.findIndex(x=>x.id===id);if(i>-1)TPL.gas.splice(i,1);renderLancTpls();toast('Template removido');fbSave();}
 function rRec(){const rec=getRec(curY,curM);const tot=rec.reduce((s,r)=>s+r.v,0);document.getElementById('rec-lbl').textContent=MN[curM]+' '+curY;document.getElementById('rec-total').textContent=fmt(tot);document.getElementById('rec-banner').textContent=rec.length+' fonte(s) de renda em '+MN[curM]+' '+curY;document.getElementById('r-mes').value=curM;document.getElementById('rec-list').innerHTML=rec.length?rec.map((r,i)=>'<div class="expense-item"><div style="display:flex;align-items:center;gap:10px;flex:1"><div style="width:36px;height:36px;border-radius:10px;background:rgba(6,214,160,.12);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">\ud83d\udcb5</div><div><div class="expense-name">'+r.n+'</div><div class="expense-cat">'+(r.r||'-')+'</div></div></div><div style="display:flex;align-items:center;gap:10px"><div class="expense-val" style="color:var(--green)">'+fmt(r.v)+'</div><button class="btn btn-danger btn-sm" onclick="delRec('+i+')">\u00d7</button></div></div>').join(''):'<div style="color:var(--text3);font-size:13px;padding:12px 0">Nenhum recebimento neste m\u00eas.<br><span style="color:var(--accent);cursor:pointer" onclick="openModal(\'rec\')">\u002b Adicionar agora</span></div>';const mx=Math.max(...MO.map(m=>getRec(curY,m).reduce((s,r)=>s+r.v,0)),1);document.getElementById('rec-evo').innerHTML=MO.map(m=>{const t=getRec(curY,m).reduce((s,r)=>s+r.v,0);const act=m===curM;return'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px"><div style="width:48px;font-size:12px;color:'+(act?'var(--accent)':'var(--text3)')+';font-weight:'+(act?700:400)+'">'+MN[m].substring(0,3)+'</div><div style="flex:1;height:10px;background:var(--bg3);border-radius:5px;overflow:hidden"><div style="height:100%;width:'+(t/mx*100).toFixed(1)+'%;background:'+(act?'var(--green)':'rgba(6,214,160,.4)')+';border-radius:5px"></div></div><div style="width:90px;text-align:right;font-size:12px;font-weight:600;color:'+(act?'var(--green)':'var(--text2)')+'">'+fmt(t)+'</div></div>';}).join('');renderRecTpls();}
 function delRec(i){getRec(curY,curM).splice(i,1);rRec();rDash();toast('Removido');}
 function addRec(){const n=document.getElementById('r-nome').value.trim();const v=parseFloat(document.getElementById('r-valor').value);const m=document.getElementById('r-mes').value;const r=document.getElementById('r-resp').value.trim()||'Voc\u00ea';const st=document.getElementById('r-save-tpl').checked;if(!n||!v){alert('Preencha nome e valor!');return;}getRec(curY,m).push({n,v,r});if(st){TPL.rec.push({id:++tplRid,n,v,r});renderRecTpls();}closeModal('rec');['r-nome','r-valor','r-resp'].forEach(id=>document.getElementById(id).value='');document.getElementById('r-save-tpl').checked=false;toast('Recebimento adicionado'+(st?' + template salvo':'')+' \u2705');rRec();rDash();fbSave();}
-function rLanc(){const g=getGas(curY,curM);const f=lFilt==='todos'?g:g.filter(x=>x.t===lFilt);document.getElementById('lanc-tb').innerHTML=f.length?f.map(x=>{const gi=g.indexOf(x);return'<tr><td><strong>'+x.n+'</strong></td><td style="color:var(--text3)">'+x.c+'</td><td>'+tb(x.t)+'</td><td class="text-right" style="color:'+tc(x.t)+';font-weight:600;font-family:\'Syne\',sans-serif">'+fmt(x.v)+'</td><td style="color:var(--text3);font-size:12px">'+(x.p?'at\u00e9 '+x.p:'-')+'</td><td style="display:flex;gap:4px"><button class="btn btn-sm" style="background:rgba(108,99,255,.15);color:var(--accent);border:1px solid rgba(108,99,255,.3)" onclick="editLanc('+gi+')">\u270f\ufe0f</button><button class="btn btn-danger btn-sm" onclick="delLanc('+gi+')">\u00d7</button></td></tr>';}).join(''):'<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:20px">Nenhum lan\u00e7amento neste m\u00eas.</td></tr>';renderLancTpls();}
+function rLanc(){const g=getGas(curY,curM);const f=lFilt==='todos'?g:g.filter(x=>x.t===lFilt);document.getElementById('lanc-tb').innerHTML=f.length?f.map(x=>{const gi=g.indexOf(x);return'<tr><td><strong>'+x.n+'</strong></td><td style="color:var(--text3)">'+x.c+'</td><td><span style="font-size:11px;background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:20px;color:var(--text2)">'+(x.ct||'—')+'</span></td><td>'+tb(x.t)+'</td><td class="text-right" style="color:'+tc(x.t)+';font-weight:600;font-family:\'Syne\',sans-serif">'+fmt(x.v)+'</td><td style="color:var(--text3);font-size:12px">'+(x.p?'até '+x.p:'-')+'</td><td style="display:flex;gap:4px"><button class="btn btn-sm" style="background:rgba(108,99,255,.15);color:var(--accent);border:1px solid rgba(108,99,255,.3)" onclick="editLanc('+gi+')">\u270f\ufe0f</button><button class="btn btn-danger btn-sm" onclick="delLanc('+gi+')">\u00d7</button></td></tr>';}).join(''):'<tr><td colspan="7" style="color:var(--text3);text-align:center;padding:20px">Nenhum lan\u00e7amento neste m\u00eas.</td></tr>';renderLancTpls();}
 function filt(f){lFilt=f;rLanc();}
 function delLanc(i){getGas(curY,curM).splice(i,1);rLanc();toast('Removido');fbSave();}
 let _editIdx=-1;
@@ -644,6 +669,7 @@ function editLanc(i){
   document.getElementById('l-tipo').value=x.t;
   document.getElementById('l-mes').value=curM;
   document.getElementById('l-cat').value=x.c;
+  document.getElementById('l-conta').value=x.ct||CONTAS[0];
   document.getElementById('l-parcela').value=x.p||'';
   const dg=document.getElementById('l-destino-group');
   if(x.t==='investimento'){dg.style.display='flex';document.getElementById('l-destino').value=x.d||'Renda Fixa / CDB';}
@@ -657,6 +683,7 @@ function resetLancModal(){
   document.getElementById('lanc-save-btn').textContent='Salvar';
   ['l-nome','l-valor','l-parcela'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('l-save-tpl').checked=false;
+  document.getElementById('l-conta').value=CONTAS[0]||'';
   document.getElementById('l-destino-group').style.display='none';
 }
 function addLanc(){
@@ -665,17 +692,18 @@ function addLanc(){
   const t=document.getElementById('l-tipo').value;
   const m=document.getElementById('l-mes').value;
   const c=document.getElementById('l-cat').value;
+  const ct=document.getElementById('l-conta').value;
   const p=document.getElementById('l-parcela').value;
   const d=t==='investimento'?document.getElementById('l-destino').value:'';
   const st=document.getElementById('l-save-tpl').checked;
   if(!n||!v){alert('Preencha nome e valor!');return;}
-  const item=Object.assign({n,v,t,c},p?{p}:{},d?{d}:{});
+  const item=Object.assign({n,v,t,c,ct},p?{p}:{},d?{d}:{});
   if(_editIdx>=0){
     getGas(curY,curM)[_editIdx]=item;
     toast('Lançamento atualizado ✅');
   } else {
     getGas(curY,m).push(item);
-    if(st){TPL.gas.push(Object.assign({id:++tplLid,n,v,t,c},d?{d}:{}));renderLancTpls();}
+    if(st){TPL.gas.push(Object.assign({id:++tplLid,n,v,t,c,ct},d?{d}:{}));renderLancTpls();}
     toast('Gasto adicionado'+(st?' + template salvo':'')+' ✅');
   }
   closeModal('lanc');
@@ -720,7 +748,7 @@ function rInv(){
 function rMeta(){const{ein,ess,nao,inv,out}=gmd(curM);const bal=ein-out;document.getElementById('meta-cat').innerHTML=[{l:'\ud83c\udfe0 Gastos Essenciais',v:ess,m:ein*.5,color:'green'},{l:'\ud83c\udf89 N\u00e3o Essenciais',v:nao,m:ein*.3,color:'yellow'},{l:'\ud83d\udcc8 Investimentos',v:inv,m:ein*.2,color:'purple'}].map(x=>{const p=pN(x.v,x.m);const ov=p>100;return'<div class="meta-item"><div class="meta-row"><div style="font-size:13px;font-weight:500">'+x.l+'</div><div style="font-size:12px;font-weight:600;color:'+(ov?'var(--red)':'var(--'+x.color+')')+'">'+p.toFixed(0)+'%</div></div><div class="bar-track"><div class="bar-fill '+(ov?'over':x.color)+'" style="width:'+Math.min(p,100)+'%"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text3)"><span>Gasto: '+fmt(x.v)+'</span><span>Meta: '+fmt(x.m)+'</span></div></div>';}).join('');document.getElementById('meta-obj').innerHTML=[{l:'\ud83c\udfd6\ufe0f Viagem dos Sonhos',a:6300,m:15000},{l:'\ud83d\ude97 Fundo Carro Novo',a:4200,m:30000},{l:'\ud83c\udfe0 Entrada Apartamento',a:12000,m:80000},{l:'\ud83d\udc8a Reserva Emerg\u00eancia',a:8500,m:25000}].map(o=>{const p=(o.a/o.m*100).toFixed(0);return'<div class="meta-item"><div class="meta-row"><div style="font-size:13px;font-weight:500">'+o.l+'</div><div style="font-size:12px;font-weight:600;color:var(--accent)">'+p+'%</div></div><div class="bar-track"><div class="bar-fill purple" style="width:'+p+'%"></div></div><div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text3)"><span>'+fmt(o.a)+'</span><span>Meta: '+fmt(o.m)+'</span></div></div>';}).join('');const dk=[];if(ess>ein*.5)dk.push({i:'\u26a0\ufe0f',t:'Essenciais ('+fmt(ess)+') acima de 50% da renda.'});if(nao>ein*.3)dk.push({i:'\ud83d\udca1',t:'N\u00e3o essenciais acima de 30%. Revise assinaturas e restaurantes.'});if(inv<ein*.1)dk.push({i:'\ud83d\udcc8',t:'Menos de 10% investido. Aportes pequenos fazem diferen\u00e7a.'});if(bal>0)dk.push({i:'\u2705',t:'Saldo positivo de '+fmt(bal)+' este m\u00eas! Considere alocar em investimentos.'});dk.push({i:'\ud83c\udfaf',t:'Regra 50/30/20: 50% essenciais, 30% lazer, 20% investimentos.'});document.getElementById('dicas').innerHTML=dk.map(d=>'<div style="display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)"><div style="font-size:20px">'+d.i+'</div><div style="font-size:13px;color:var(--text2);line-height:1.5">'+d.t+'</div></div>').join('');}
 function rHist(){document.getElementById('hist-sub').textContent='Comparativo entre os meses de '+curY;document.getElementById('hist-yr').textContent=curY;document.getElementById('hist-tb').innerHTML=MO.map(m=>{const{ein,ess,nao,inv,out}=gmd(m);const bal=ein-out;const act=m===curM;return'<tr style="'+(act?'background:rgba(108,99,255,.06)':'')+'"><td style="font-weight:'+(act?700:400)+';color:'+(act?'var(--accent)':'var(--text)')+'">'+MN[m]+'</td><td class="text-right" style="color:var(--green)">'+fmt(ein)+'</td><td class="text-right">'+fmt(ess)+'</td><td class="text-right">'+fmt(nao)+'</td><td class="text-right" style="color:var(--purple)">'+fmt(inv)+'</td><td class="text-right" style="color:'+(bal>=0?'var(--green)':'var(--red)')+'"><strong>'+fmt(Math.abs(bal))+' '+(bal>=0?'\u2191':'\u2193')+'</strong></td></tr>';}).join('');document.getElementById('rec-fix').innerHTML=[{n:'Aluguel',v:2927,c:'Moradia'},{n:'Netflix',v:20.9,c:'Assinatura'},{n:'IPVA',v:310,c:'Transporte'},{n:'Impostos',v:271,c:'Obrigat\u00f3rio'}].map(r=>'<div class="expense-item"><div><div class="expense-name">'+r.n+'</div><div class="expense-cat">'+r.c+'</div></div><div class="expense-val" style="color:var(--red)">'+fmt(r.v)+'</div></div>').join('');const ass=[{n:'Netflix',v:20.9},{n:'Finclass',v:49.85},{n:'iFood Pass',v:4.9}];const totA=ass.reduce((s,a)=>s+a.v,0);document.getElementById('ass-list').innerHTML=ass.map(a=>'<div class="expense-item"><div class="expense-name">'+a.n+'</div><div class="expense-val" style="color:var(--red)">'+fmt(a.v)+'/m\u00eas</div></div>').join('')+'<div class="expense-item"><div style="font-size:13px;font-weight:700">Total</div><div class="expense-val" style="color:var(--red)">'+fmt(totA)+'/m\u00eas</div></div>';}
 document.getElementById('r-mes').value=curM;document.getElementById('l-mes').value=curM;
-rebuildSelects();rebuildDestSelects();
+rebuildSelects();rebuildDestSelects();rebuildContaSelects();
 rDash();
 </script>
 </body>
